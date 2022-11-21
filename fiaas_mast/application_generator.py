@@ -18,8 +18,8 @@ from .metadata_generator import MetadataGenerator
 
 
 class ApplicationGenerator(MetadataGenerator):
-    def __init__(self, http_client, create_deployment_id=generate_random_uuid_string):
-        super().__init__(http_client, create_deployment_id)
+    def __init__(self, create_deployment_id=generate_random_uuid_string):
+        super().__init__(create_deployment_id)
         self.application_model, self.spec_model = check_models()
 
     def generate_application(self, target_namespace, release):
@@ -33,7 +33,7 @@ class ApplicationGenerator(MetadataGenerator):
         return deployment_id, application
 
     def spec(self, release):
-        config = self.download_config(release.config_url)
+        config = release.config
         if not config:
             raise ClientError("Invalid config: {}".format(release.config_url))
 

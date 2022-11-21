@@ -1,4 +1,3 @@
-
 # Copyright 2017-2019 The FIAAS Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,8 +20,7 @@ from .common import dict_merge, generate_random_uuid_string, ClientError
 
 
 class MetadataGenerator:
-    def __init__(self, http_client, create_deployment_id=generate_random_uuid_string):
-        self.http_client = http_client
+    def __init__(self, create_deployment_id=generate_random_uuid_string):
         self.create_deployment_id = create_deployment_id
 
     def build_annotations(self, items, prefix=""):
@@ -68,15 +66,3 @@ class MetadataGenerator:
         # TODO: Why doesn't annotations default to a dict?
         metadata = ObjectMeta(name=application_name, namespace=namespace, labels=labels, annotations=annotations)
         return metadata
-
-    def download_config(self, config_url):
-        try:
-            resp = self.http_client.get(config_url)
-        except (InvalidURL, MissingSchema, InvalidSchema) as e:
-            raise ClientError("Invalid config_url: {}".format(config_url)) from e
-        resp.raise_for_status()
-        try:
-            app_config = yaml.safe_load(resp.text)
-        except yaml.YAMLError as e:
-            raise ClientError("Invalid config YAML: {}".format(e))
-        return app_config

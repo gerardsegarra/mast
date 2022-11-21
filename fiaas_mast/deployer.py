@@ -1,4 +1,3 @@
-
 # Copyright 2017-2019 The FIAAS Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,15 +21,14 @@ from .common import generate_random_uuid_string, ClientError, check_models
 
 
 class Deployer:
-    def __init__(self, http_client, create_deployment_id=generate_random_uuid_string):
-        self.http_client = http_client
+    def __init__(self, create_deployment_id=generate_random_uuid_string):
         self.create_deployment_id = create_deployment_id
         self.application_model, self.spec_model = check_models()
 
     def deploy(self, target_namespace, release):
         """Create or update TPR for application"""
         application_name = release.application_name
-        config = self.download_config(release.config_url)
+        config = release.config
         namespace = config["namespace"] if (config['version'] < 3) and ("namespace" in config) else target_namespace
         deployment_id = self.create_deployment_id()
         labels = {"fiaas/deployment_id": deployment_id, "app": application_name}
@@ -45,15 +43,6 @@ class Deployer:
         application.save()
 
         return namespace, application_name, deployment_id
-
-    def download_config(self, config_url):
-        try:
-            resp = self.http_client.get(config_url)
-        except (InvalidURL, MissingSchema) as e:
-            raise ClientError("Invalid config_url") from e
-        resp.raise_for_status()
-        app_config = yaml.safe_load(resp.text)
-        return app_config
 
 
 class DeployerError(Exception):

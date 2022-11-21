@@ -1,3 +1,4 @@
+from http.client import InvalidURL
 
 # Copyright 2017-2019 The FIAAS Authors
 #
@@ -14,9 +15,11 @@
 # limitations under the License.
 
 import requests
+import yaml
 from flask import current_app as app
 from flask import url_for, jsonify, request, abort, Blueprint, make_response, render_template
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Histogram
+from requests.exceptions import MissingSchema, InvalidSchema
 from werkzeug.exceptions import UnprocessableEntity
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
@@ -24,7 +27,7 @@ from requests.packages.urllib3.util.retry import Retry
 from urllib.parse import urlparse
 
 from .application_generator import ApplicationGenerator
-from .common import make_safe_name
+from .common import make_safe_name, ClientError
 from .configmap_generator import ConfigMapGenerator
 from .deployer import Deployer
 from .models import ApplicationConfiguration
@@ -47,6 +50,19 @@ BOOTSTRAP_STATUS = dict(UNKNOWN="warning",
                         FAILED="danger")
 
 
+def download_config(http_client, config_url):
+    try:
+        resp = http_client.get(config_url)
+    except (InvalidURL, MissingSchema, InvalidSchema) as e:
+        raise ClientError("Invalid config_url: {}".format(config_url)) from e
+    resp.raise_for_status()
+    try:
+        app_config = yaml.safe_load(resp.text)
+    except yaml.YAMLError as e:
+        raise ClientError("Invalid config YAML: {}".format(e))
+    return app_config
+
+
 @web.route("/health", methods=["GET"])
 @health_histogram.time()
 def health_check():
@@ -61,12 +77,13 @@ def deploy_handler():
     errors = ["Missing key {!r} in input".format(key) for key in required_fields if key not in data]
     if errors:
         abort(UnprocessableEntity.code, errors)
-    deployer = Deployer(get_http_client())
+    deployer = Deployer()
+    config = download_config(get_http_client(), data["config_url"])
     namespace, application_name, deployment_id = deployer.deploy(
         data["namespace"],
         Release(
             data["image"],
-            data["config_url"],
+            config,
             make_safe_name(data["application_name"]),
             data["application_name"],
             data.get("spinnaker_tags", {}),
@@ -105,12 +122,13 @@ def generate_application():
     errors = ["Missing key {!r} in input".format(key) for key in required_fields if key not in data]
     if errors:
         abort(UnprocessableEntity.code, errors)
-    generator = ApplicationGenerator(get_http_client())
+    generator = ApplicationGenerator()
+    config = download_config(get_http_client(), data["config_url"])
     deployment_id, application = generator.generate_application(
         data["namespace"],
         Release(
             data["image"],
-            data["config_url"],
+            config,
             make_safe_name(data["application_name"]),
             data["application_name"],
             data.get("spinnaker_tags", {}),
@@ -139,12 +157,12 @@ def generate_configmap_application():
     errors = ["Missing key {!r} in input".format(key) for key in required_fields if key not in data]
     if errors:
         abort(UnprocessableEntity.code, errors)
-    generator = ConfigMapGenerator(get_http_client())
-
+    generator = ConfigMapGenerator()
+    application_data = download_config(get_http_client(), data["application_data_url"])
     deployment_id, config_map = generator.generate_configmap(
         data["namespace"],
         ApplicationConfiguration(
-            data["application_data_url"],
+            application_data,
             make_safe_name(data["application_name"]),
             data["application_name"],
             data.get("spinnaker_tags", {}),
